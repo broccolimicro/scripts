@@ -1,0 +1,179 @@
+#!/usr/bin/python3
+
+import sys
+import re
+
+class StackElem:
+	def __init__(self, parent):
+		self.parent = parent
+		self.methods = set()
+
+def emitOperation(number, command, operation, stack):
+	if command in [".prot", ".protect", ".unprot", ".unprotect"]:
+		return # Xyce does not support these commands
+	elif command == ".option":
+		operation = fixOption(number, operation, stack)
+	else:
+		operation = fixParams(number, operation, stack)
+
+	if len(operation) > 0:
+		print("\n".join(operation))
+
+def emitFunction(name, args, definition):
+	print(".func " + name + args + " {" + definition + "}")
+
+# s/^include/* include/g
+
+def fixParams(number, operation, stack):
+	result = []
+	index = []
+
+	for i, line in enumerate(operation):
+		if len(line) == 0 or line[0] == "*":
+			result.append(line)
+			continue
+	
+		result.append("")
+		line = line.replace("$", ";")
+		
+		for param in re.finditer(r'([^ \t=+\(\)]+|\'[^\']*\'|[\(\)])(?:[ \t]*(\([^\)]*\))?[ \t]*=[ \t]*(\'[^\']*\'|[^ \t]+))?', line):
+			name = param.group(1)
+			args = param.group(2)
+			definition = param.group(3)
+
+			# dev/gauss is an unsupported parameter in xyce
+			if name == "dev/gauss":
+				continue
+			elif name in ["vt", "Vt", "vT", "VT"]:
+					name = "local_" + name
+
+			if definition:
+				if ":" in definition:
+					definition = definition.replace(":", " :")
+					if definition[0] != "'":
+						definition = "'" + definition + "'"
+
+			# Convert .param functions to .func commands
+			if args and len(args) > 0:
+				found = False
+				for elem in stack:
+					if name in elem.methods:
+						found = True
+						break
+				if not found:
+					emitFunction(name, args, definition[1:-1] if definition[0] == "'" else definition)
+					stack[-1].methods.add(name)
+			# TODO(edward.bingham) other parameter fixes
+			elif definition and len(definition) > 0:
+				result[-1] += " " + name + "=" + definition
+			elif name and len(name) > 0:
+				if len(result[-1]) > 0:
+					result[-1] += " "
+				result[-1] += name
+
+		if len(result[-1]) == 0:
+			result.pop()
+		else:
+			index.append(len(result)-1)
+
+	if len(index) == 1 and result[index[0]] == ".param":
+		del result[index[0]]
+
+	for i in index[1:]:
+		result[i] = "+ " + result[i]
+
+	return result
+
+def fixOption(number, operation, stack):
+	result = []
+	for i, line in enumerate(operation):
+		if len(line) == 0 or line[0] == "*":
+			result.append(line)
+			continue
+
+		for param in re.finditer(r'([a-zA-Z_][a-zA-Z0-9_]*)[ \t]*=[ \t]*(\'[^\']*\'|[^ \t]*)', line):
+			name = param.group(1)
+			definition = param.group(2)
+			if name in ["tmiflag", "modmonte", "tmipath", "etmiUsrInput"]:
+				# these options load the TSMC Model Interface (TMI) which isn't supported in Xyce
+				# TMI is generally used for modelling of silicon, transistor, and wire aging
+				continue
+			# TODO(edward.bingham) scale and geoshrink ultimately need to be
+			# combined, which means keeping track of the values of each in a given
+			# scope and generating options that combine those values as needed
+			if name == "scale":
+				result.append(".options parser " + name + "=" + definition)
+			elif name == "geoshrink":
+				result.append(".options parser scale=" + definition)
+			else:
+				# options need to be actively handled individually, all options between hspice and xyce are different
+				print("line " + str(number) + ": unhandled option '" + line + "'", file=sys.stderr)
+				continue
+
+	return result
+
+def hspice2Xyce(path):
+	stack = [StackElem("")]
+	operation = []
+	command = ""
+
+	devices = "bcdefghijklmopqrstuvwxyz"
+	commands = "."
+	continuations = "+"
+
+	with open(path, 'r') as fptr:
+		for number, line in enumerate(fptr):
+			line = line.strip()
+			# extraneous include statements
+			if line.lower().startswith("include"):
+				line = "* " + line
+
+			if len(line) == 0 or line[0] == '*' or line[0] == '#':
+				pass
+			else:
+				if line[0].lower() in continuations:
+					pass
+				elif line[0].lower() in commands or line[0].lower() in devices:
+					# print and clear stored multiline command
+					emitOperation(number, command, operation, stack)
+					operation = []
+
+					command = re.split("[ \t]+", line)[0].lower().strip()
+					if line[0].lower() in commands:
+						if command in [".data", ".subckt", ".if", ".control"]:
+							stack.append(StackElem(command))
+						elif command == ".lib":
+							args = re.split("[ \t]+", line)
+							if len(args) <= 2:
+								stack.append(StackElem(command))
+						elif command.startswith(".end"):
+							if command == ".endl" and stack[-1].parent == ".lib":
+								stack.pop()
+							elif command == ".ends" and stack[-1].parent == ".subckt":
+								stack.pop()
+							elif command == ".enddata" and stack[-1].parent == ".data":
+								stack.pop()
+							elif command == ".endif" and stack[-1].parent == ".if":
+								stack.pop()
+							elif command == ".endc" and stack[-1].parent == ".control":
+								stack.pop()
+							elif command == ".end" and stack[-1].parent == "":
+								stack.pop()
+							else:
+								print("line " + str(number) + ": stack parse error '" + command + "' disagrees with '" + stack[-1].parent + "'", file=sys.stderr)
+								return
+				else:
+					print("line " + str(number) + ": unrecognized command '" + line + "'", file=sys.stderr)
+					return
+
+			operation.append(line)	
+
+		emitOperation(-1, command, operation, stack)
+		operation = []
+
+if __name__ == "__main__":
+	if len(sys.argv) > 1:
+		hspice2Xyce(sys.argv[1])
+	else:
+		print("$ hspice2xyce path")
+		print("Converts an HSPICE netlist to a Xyce netlist and emits result to stdout.")
