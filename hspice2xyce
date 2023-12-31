@@ -13,6 +13,8 @@ def emitOperation(number, command, operation, stack):
 		return # Xyce does not support these commands
 	elif command == ".option":
 		operation = fixOption(number, operation, stack)
+	elif command in [".if", ".elif", ".elsif", ".else", ".endif"]:
+		pass
 	else:
 		operation = fixParams(number, operation, stack)
 
@@ -45,7 +47,9 @@ def fixParams(number, operation, stack):
 			if name == "dev/gauss":
 				continue
 			elif name in ["vt", "Vt", "vT", "VT"]:
-					name = "local_" + name
+				name = "local_" + name
+			#elif name.lower().endswith("_fc"):
+			#	continue
 
 			if definition:
 				if ":" in definition:
