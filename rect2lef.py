@@ -144,7 +144,8 @@ def writeLayerMap(path, conf):
 
 def writeGDS(path, conf, cell):
 	if not hasGDSTK:
-		print("gdstk not found, skipping gds export")
+		print("skipping gds, enable gds support by installing gdstk:")
+		print("pip install gdstk")
 		return
 
 	scale = conf["general"]["scale"]
