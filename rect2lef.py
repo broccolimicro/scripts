@@ -3,6 +3,12 @@
 import os
 import sys
 
+hasGDSTK = True
+try:
+	import gdstk
+except ImportError:
+	hasGDSTK = False
+
 def stripComments(line):
 	escape = False
 	inString = False
@@ -136,6 +142,39 @@ def writeLayerMap(path, conf):
 			if "prb" in name.lower():
 				print(f"DIEAREA ALL {layer[1]} {layer[2]}", file=fptr)
 
+def writeGDS(path, conf, cell):
+	if not hasGDSTK:
+		print("gdstk not found, skipping gds export")
+		return
+
+	scale = conf["general"]["scale"]
+	numMetals = conf["general"]["metals"]
+	layers = {layer: (major, minor) for layer, major, minor in zip(conf["gds"]["layers"], conf["gds"]["major"], conf["gds"]["minor"])}
+	
+	lib = gdstk.Library()
+	gdsCell = lib.new_cell(cell.name)
+	
+	bndry = None
+	for layer, idx in layers.items():
+		if layer.startswith("prb"):
+			bndry = idx
+			break
+	if bndry:
+		gdsCell.add(gdstk.rectangle((cell.bbox[0]*scale, cell.bbox[1]*scale), (cell.bbox[2]*scale, cell.bbox[3]*scale), layer=bndry[0], datatype=bndry[1]))
+	for rect in cell.rects:
+		gds = queryGDS(conf, rect.layer)
+		labelWritten = False
+		for layerName, bloat in gds:
+			name, purpose = layerName.rsplit(".", 1)
+			if layerName in layers:
+				idx = layers[layerName]
+				gdsCell.add(gdstk.rectangle(((rect.bounds[0]-bloat)*scale, (rect.bounds[1]-bloat)*scale), ((rect.bounds[2]+bloat)*scale, (rect.bounds[3]+bloat)*scale), layer=idx[0], datatype=idx[1]))
+				if rect.label and rect.label != "#" and not labelWritten:
+					gdsCell.add(gdstk.Label(rect.label, ((rect.bounds[0] + rect.bounds[2])*scale/2, (rect.bounds[1] + rect.bounds[3])*scale/2), layer=idx[0], texttype=idx[1]))
+					labelWritten = True
+
+	lib.write_gds(path)
+
 def writeLEF(path, conf, cell):
 	scale = conf["general"]["scale"]
 	numMetals = conf["general"]["metals"]
@@ -205,22 +244,28 @@ def writeLEF(path, conf, cell):
 		print("", file=fptr)
 
 def print_help():
-	print("Usage: rect2lef.py [options] <input.rect> <output.lef> [output.layermap]")
+	print("Usage: rect2lef.py [options] <input.rect>")
 	print("\t-T<tech>\tidentify the technology used for this translation.")
+	print("\t-lm\temit the layermap")
+	print("\t-gds\twrite the gds.")
 
 if __name__ == "__main__":
 	if len(sys.argv) <= 2 or sys.argv[1] == '--help' or sys.argv[1] == '-h':
 		print_help()
 	else:
 		rectPath = None
-		lefPath = None
-		lmPath = None
+		doLM = False
+		doGDS = False
 		techName = "sky130"
 		actHome = os.environ.get('ACT_HOME', "/opt/cad")
 		for arg in sys.argv[1:]:
 			if arg[0] == '-':
 				if arg[1] == 'T':
 					techName = arg[2:]
+				elif arg == "-lm":
+					doLM = True
+				elif arg == "-gds":
+					doGDS = True
 				else:
 					print(f"error: unrecognized option '{arg}'")
 					print("")
@@ -228,14 +273,12 @@ if __name__ == "__main__":
 					sys.exit()
 			elif not rectPath:
 				rectPath = arg
-			elif not lefPath:
-				lefPath = arg
-			elif not lmPath:
-				lmPath = arg
 
 		conf = loadActConf(actHome + "/conf/" + techName + "/layout.conf")
-		if rectPath and lefPath:
+		if rectPath:
 			cell = readCell(rectPath)
 			writeLEF(cell.name + ".lef", conf, cell)
-		if lmPath:
-			writeLayerMap(lmPath, conf)
+		if doLM:
+			writeLayerMap("layermap.txt", conf)
+		if doGDS:
+			writeGDS(cell.name + ".gds", conf, cell) 
