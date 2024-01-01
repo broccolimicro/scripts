@@ -123,7 +123,10 @@ def writeLayerMap(path, conf):
 	layers = zip(conf["gds"]["layers"], conf["gds"]["major"], conf["gds"]["minor"])
 	with open(path, "w") as fptr:
 		for layer in layers:
-			name, purpose = layer[0].rsplit(".", 1)
+			name = layer[0]
+			purpose = ""
+			if "." in name:
+				name, purpose = layer[0].rsplit(".", 1)
 			if "via" in name and purpose in ["drawing", "dg", "drw"]:
 				print(f"{name} VIA {layer[1]} {layer[2]}", file=fptr)
 			elif purpose in ["drawing", "dg", "drw"]:
@@ -152,31 +155,50 @@ def writeGDS(path, conf, cell):
 	numMetals = conf["general"]["metals"]
 	layers = {layer: (major, minor) for layer, major, minor in zip(conf["gds"]["layers"], conf["gds"]["major"], conf["gds"]["minor"])}
 	
-	lib = gdstk.Library()
+	lib = gdstk.Library(unit=scale*1e-9, precision=scale*1e-9)
 	gdsCell = lib.new_cell(cell.name)
 	
 	bndry = None
 	for layer, idx in layers.items():
-		if layer.startswith("prb"):
-			bndry = idx
-			break
-	if bndry:
-		gdsCell.add(gdstk.rectangle((cell.bbox[0]*scale, cell.bbox[1]*scale), (cell.bbox[2]*scale, cell.bbox[3]*scale), layer=bndry[0], datatype=bndry[1]))
+		name = layer
+		purpose = ""
+		if "." in name:
+			name, purpose = layer.rsplit(".", 1)
+		if (name == "text" and purpose in ["drawing", "dg", "drw"]) or name == "outline" or name == "areaid_sc":
+			gdsCell.add(gdstk.rectangle((cell.bbox[0], cell.bbox[1]), (cell.bbox[2], cell.bbox[3]), layer=idx[0], datatype=idx[1]))
 	for rect in cell.rects:
 		gds = queryGDS(conf, rect.layer)
 		labelWritten = False
 		for layerName, bloat in gds:
-			name, purpose = layerName.rsplit(".", 1)
+			name = layerName
+			purpose = ""
+			if "." in name:
+				name, purpose = layerName.rsplit(".", 1)
 			if layerName in layers:
 				idx = layers[layerName]
-				gdsCell.add(gdstk.rectangle(((rect.bounds[0]-bloat)*scale, (rect.bounds[1]-bloat)*scale), ((rect.bounds[2]+bloat)*scale, (rect.bounds[3]+bloat)*scale), layer=idx[0], datatype=idx[1]))
+				gdsCell.add(gdstk.rectangle(((rect.bounds[0]-bloat), (rect.bounds[1]-bloat)), ((rect.bounds[2]+bloat), (rect.bounds[3]+bloat)), layer=idx[0], datatype=idx[1]))
 				if rect.label and rect.label != "#" and not labelWritten:
-					gdsCell.add(gdstk.Label(rect.label, ((rect.bounds[0] + rect.bounds[2])*scale/2, (rect.bounds[1] + rect.bounds[3])*scale/2), layer=idx[0], texttype=idx[1]))
+					gdsCell.add(gdstk.Label(rect.label, ((rect.bounds[0] + rect.bounds[2])/2, (rect.bounds[1] + rect.bounds[3])/2), layer=idx[0], texttype=idx[1]))
 					labelWritten = True
 
 	lib.write_gds(path)
 
 def writeLEF(path, conf, cell):
+	# See https://github.com/KLayout/klayout/blob/766dd675c11d98b2461c448035197f6e934cb497/src/plugins/streamers/lefdef/db_plugin/dbLEFDEFImporter.cc#L1085
+	# Purpose Name = Placement Code
+  # LEFPIN       = LEFPIN
+	# PIN          = PIN
+	# LEFPINNAME   = LEFLABEL
+	# PINNAME      = LABEL
+	# FILL         = FILL
+	# FILLOPC      = FILLOPC
+	# LEFOBS       = OBS
+	# SPNET        = SPNET
+	# NET          = NET
+	# VIA          = VIA
+	# BLOCKAGE     = BLK
+	# ALL = [LEFPIN, PIN, FILL, FILLOPC, OBS, SPNET, NET, VIA]
+
 	scale = conf["general"]["scale"]
 	numMetals = conf["general"]["metals"]
 	with open(path, "w") as fptr:
@@ -226,7 +248,10 @@ def writeLEF(path, conf, cell):
 				print("\t\tPORT", file=fptr)
 				gds = queryGDS(conf, rect.layer)
 				for layer, bloat in gds:
-					name, purpose = layer.rsplit(".", 1)
+					name = layer
+					purpose = ""
+					if "." in name:
+						name, purpose = layer.rsplit(".", 1)
 					print(f"\t\t\tLAYER {name} ;", file=fptr)
 					print(f"\t\t\t\tRECT {(rect.bounds[0]-bloat)*scale} {(rect.bounds[1]-bloat)*scale} {(rect.bounds[2]+bloat)*scale} {(rect.bounds[3]+bloat)*scale} ;", file=fptr)
 				print("\t\tEND", file=fptr)
@@ -237,7 +262,10 @@ def writeLEF(path, conf, cell):
 			#if not rect.isInput and not rect.isOutput:
 			gds = queryGDS(conf, rect.layer)
 			for layer, bloat in gds:
-				name, purpose = layer.rsplit(".", 1)
+				name = layer
+				purpose = ""
+				if "." in name:
+					name, purpose = layer.rsplit(".", 1)
 				print(f"\t\tLAYER {name} ;", file=fptr)
 				print(f"\t\t\tRECT {(rect.bounds[0]-bloat)*scale} {(rect.bounds[1]-bloat)*scale} {(rect.bounds[2]+bloat)*scale} {(rect.bounds[3]+bloat)*scale} ;", file=fptr)
 		print("\tEND", file=fptr)
