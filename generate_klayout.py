@@ -262,23 +262,23 @@ def createLYTFromACT(prs2net, layout, actHome):
 	# LEFDEF Layer Purposes
 	# from https://github.com/KLayout/klayout/blob/6c8d97adc97bf992ccbdb5f7950cb95a28ffeab9/src/plugins/streamers/lefdef/db_plugin/dbLEFDEFImporter.h#L1037
 	# Routing              from DEF only
-  # Pins                 from DEF
-  # Fills                from DEF
-  # FillsOPC             from DEF
-  # SpecialRouting       from DEF only
-  # LEFPins              from LEF
-  # ViaGeometry          from LEF+DEF
-  # Label                from DEF
-  # LEFLabel             from LEF
-  # Obstructions         from LEF only
-  # Outline              from LEF+DEF
-  # Blockage             from DEF only
-  # PlacementBlockage    from DEF only
-  # Regions              from DEF only
-  # RegionsNone          from DEF only
-  # RegionsFence         from DEF only
-  # RegionsGuide         from DEF only
-  # All                  from DEF only
+	# Pins                 from DEF
+	# Fills                from DEF
+	# FillsOPC             from DEF
+	# SpecialRouting       from DEF only
+	# LEFPins              from LEF
+	# ViaGeometry          from LEF+DEF
+	# Label                from DEF
+	# LEFLabel             from LEF
+	# Obstructions         from LEF only
+	# Outline              from LEF+DEF
+	# Blockage             from DEF only
+	# PlacementBlockage    from DEF only
+	# Regions              from DEF only
+	# RegionsNone          from DEF only
+	# RegionsFence         from DEF only
+	# RegionsGuide         from DEF only
+	# All                  from DEF only
 	if "lefdef" not in lyt["technology"]["reader-options"]:
 		lyt["technology"]["reader-options"]["lefdef"] = dict()
 
