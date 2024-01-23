@@ -429,17 +429,6 @@ def interpret_length(length):
 def print_help():
 	print("Usage: spi2act.py [options] <lambda> <spice file>")
 	print("\t--globals,-g\tbundles the power rails into a globals structure.")
-	print("")
-	print("Tech     Lambda")
-	print("ibm10lp  0.025e-6")
-	print("ibm12soi 0.019e-6")
-	print("ibm28lp  0.015e-6")
-	print("ibm9lp   0.05e-6")
-	print("ibm9sf   0.04e-6")
-	print("sam28lp  0.015e-6")
-	print("st28soi  0.015e-6")
-	print("tsmc65   0.03e-6")
-	print("xlp2     0.075e-6")
 
 if __name__ == "__main__":
 	if len(sys.argv) <= 2 or sys.argv[1] == '--help' or sys.argv[1] == '-h':
